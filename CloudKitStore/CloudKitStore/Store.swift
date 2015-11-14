@@ -9,6 +9,8 @@
 import Foundation
 import CoreData
 import CloudKit
+import CoreDataStruct
+import CloudKitStruct
 
 /// Fetches CloudKit data and caches the response in CoreData models.
 public final class CloudKitStore {
@@ -31,6 +33,16 @@ public final class CloudKitStore {
     
     /** The managed object context running on a background thread for asyncronous caching. */
     private let privateQueueManagedObjectContext: NSManagedObjectContext = NSManagedObjectContext(concurrencyType: NSManagedObjectContextConcurrencyType.PrivateQueueConcurrencyType)
+    
+    /// Request queue
+    private let requestQueue: NSOperationQueue = {
+        
+        let queue = NSOperationQueue()
+        
+        queue.name = "CloudKitStore Request Queue"
+        
+        return queue
+    }()
     
     // MARK: - Initialization
     
@@ -73,15 +85,7 @@ public final class CloudKitStore {
             self.privateQueueManagedObjectContext.persistentStoreCoordinator = self.managedObjectContext.persistentStoreCoordinator
             
             // set private context name
-            if #available(OSX 10.10, *) {
-                self.privateQueueManagedObjectContext.name = "NetworkObjects.CoreDataClient Private Managed Object Context"
-            }
-            
-            // setup CoreDataStore
-            guard let store = CoreDataStore(model: client.model, managedObjectContext: privateQueueManagedObjectContext, resourceIDAttributeName: resourceIDAttributeName)
-                else { fatalError("Could not create CoreDataStore") }
-            
-            self.store = store
+            self.privateQueueManagedObjectContext.name = "CloudKitStore Private Managed Object Context"
             
             // listen for notifications (for merging changes)
             NSNotificationCenter.defaultCenter().addObserver(self, selector: "mergeChangesFromContextDidSaveNotification:", name: NSManagedObjectContextDidSaveNotification, object: self.privateQueueManagedObjectContext)
@@ -90,12 +94,12 @@ public final class CloudKitStore {
     // MARK: - Methods
     
     /** Fetches the entity from the server using the specified ```entityName``` and ```resourceID```. */
-    public func fetch<T: CloudKitDecodable>(entityName: String, identifier: String, completionBlock: ((ErrorValue<T>) -> Void)) {
+    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(entityName: String, identifier: String, completionBlock: (ErrorValue<T> -> ()) {
         
         guard let entity = self.managedObjectModel.entitiesByName[resource.entityName]
             else { fatalError("Entity \(resource.entityName) not found on managed object model") }
         
-        
+        let recordID = CKrecor
     }
 }
 
