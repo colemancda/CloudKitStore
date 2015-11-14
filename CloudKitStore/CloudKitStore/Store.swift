@@ -17,6 +17,8 @@ public final class CloudKitStore {
     
     // MARK: - Properties
     
+    // MARK: Cache
+    
     /** The managed object context used for caching. */
     public let managedObjectContext: NSManagedObjectContext
     
@@ -28,6 +30,13 @@ public final class CloudKitStore {
     
     /// The name of a for the date attribute that can be optionally added at runtime for cache validation.
     public let dateCachedAttributeName: String?
+    
+    // MARK: CloudKit
+    
+    /// The CloudKit database this class with connect to.
+    public var cloudDatabase: CKDatabase = CKContainer.defaultContainer().publicCloudDatabase
+    
+    public var zoneID: CKRecordZoneID?
     
     // MARK: - Private Properties
     
@@ -93,18 +102,98 @@ public final class CloudKitStore {
     
     // MARK: - Methods
     
-    /** Fetches the entity from the server using the specified ```entityName``` and ```resourceID```. */
-    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(entityName: String, identifier: String, completionBlock: (ErrorValue<T> -> ()) {
+    /// Fetches the a record from the server with the specified identifier.
+    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(identifier: String, completionBlock: (ErrorValue<T> -> ())) {
         
-        guard let entity = self.managedObjectModel.entitiesByName[resource.entityName]
-            else { fatalError("Entity \(resource.entityName) not found on managed object model") }
+        let recordID: CKRecordID
         
-        let recordID = CKrecor
+        if let zoneID = zoneID {
+            
+            recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
+        }
+        else { recordID = CKRecordID(recordName: identifier) }
+        
+        self.cloudDatabase.fetchRecordWithID(recordID) { (record, error) -> Void in
+            
+            guard error == nil else {
+                
+                completionBlock(.Error(error!))
+                
+                return
+            }
+            
+            guard let decodable = T(record: record!) else {
+                
+                completionBlock(.Error(Error.InvalidResponse))
+                
+                return
+            }
+            
+            do {
+                
+                try self.privateQueueManagedObjectContext.performErrorBlockAndWait {
+                
+                    try decodable.save(self.privateQueueManagedObjectContext)
+                }
+            }
+            
+            catch { fatalError("Could not encode to CoreData. \(error)") }
+            
+            completionBlock(.Value(decodable))
+        }
+    }
+    
+    public func save<T where T: CloudKitEncodable, T: CoreDataEncodable>(encodable: T, completionBlock: (ErrorType? -> ())) {
+        
+        let record = encodable.toRecord()
+        
+        self.cloudDatabase.saveRecord(record) { (record, error) in
+            
+            guard error == nil else {
+                
+                completionBlock(error)
+                
+                return
+            }
+            
+            do {
+                
+                try self.privateQueueManagedObjectContext.performErrorBlockAndWait {
+                    
+                    try encodable.save(self.privateQueueManagedObjectContext)
+                }
+            }
+                
+            catch { fatalError("Could not encode to CoreData. \(error)") }
+            
+            completionBlock(nil)
+        }
+    }
+    
+    public func delete(identifier: String, completionBlock: (ErrorType? -> ())) {
+        
+        let recordID: CKRecordID
+        
+        if let zoneID = zoneID {
+            
+            recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
+        }
+        else { recordID = CKRecordID(recordName: identifier) }
+        
+        self.cloudDatabase.deleteRecordWithID(recordID) { (recordID, error) in
+            
+            
+        }
     }
 }
 
-
 // MARK: - Supporting Types
 
+/** Basic wrapper for error / value pairs. */
+public enum ErrorValue<T> {
+    
+    case Error(ErrorType)
+    case Value(T)
+}
 
 
