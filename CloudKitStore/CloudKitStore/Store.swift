@@ -113,7 +113,11 @@ public final class CloudKitStore {
         }
         else { recordID = CKRecordID(recordName: identifier) }
         
-        self.cloudDatabase.fetchRecordWithID(recordID) { (record, error) -> Void in
+        let operation = CKFetchRecordsOperation(recordIDs: [recordID])
+        
+        operation.database = cloudDatabase
+        
+        operation.fetchRecordsCompletionBlock = { (records, error) in
             
             guard error == nil else {
                 
@@ -121,6 +125,8 @@ public final class CloudKitStore {
                 
                 return
             }
+            
+            let record = records![recordID]
             
             guard let decodable = T(record: record!) else {
                 
@@ -132,15 +138,17 @@ public final class CloudKitStore {
             do {
                 
                 try self.privateQueueManagedObjectContext.performErrorBlockAndWait {
-                
+                    
                     try decodable.save(self.privateQueueManagedObjectContext)
                 }
             }
-            
+                
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
             completionBlock(.Value(decodable))
         }
+        
+        requestQueue.addOperation(operation)
     }
     
     public func save<T where T: CloudKitEncodable, T: CoreDataEncodable>(encodable: T, completionBlock: (ErrorType? -> ())) {
@@ -168,6 +176,11 @@ public final class CloudKitStore {
             
             completionBlock(nil)
         }
+    }
+    
+    public func edit(identifier: String, changes: ValuesObject, completionBlock: (ErrorType? -> ())) {
+        
+        
     }
     
     public func delete(identifier: String, completionBlock: (ErrorType? -> ())) {
