@@ -11,7 +11,7 @@ public extension CloudKitStore {
     /// Errors returned with ```CloudKitStore```.
     public enum Error: ErrorType {
         
-        /// The server returned an invalid response.
-        case InvalidServerResponse
+        /// Could not decode with the provided values. Similar to Invalid Server Response.
+        case CouldNotDecode
     }
 }

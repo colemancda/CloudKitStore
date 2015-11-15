@@ -27,12 +27,14 @@ public final class CloudKitStore {
     /// The CloudKit database this class with connect to.
     public var cloudDatabase: CKDatabase = CKContainer.defaultContainer().publicCloudDatabase
     
-    public var zoneID: CKRecordZoneID?
+    // MARK: State
+    
+    public var busy: Bool { return requestQueue.operationCount > 0 }
     
     // MARK: - Private Properties
     
     /** The managed object context running on a background thread for asyncronous caching. */
-    private let privateQueueManagedObjectContext: NSManagedObjectContext = NSManagedObjectContext(concurrencyType: NSManagedObjectContextConcurrencyType.PrivateQueueConcurrencyType)
+    private let privateQueueManagedObjectContext = NSManagedObjectContext(concurrencyType: NSManagedObjectContextConcurrencyType.PrivateQueueConcurrencyType)
     
     /// Request queue
     private let requestQueue: NSOperationQueue = {
@@ -75,23 +77,17 @@ public final class CloudKitStore {
     
     // MARK: - Methods
     
+    public func fetch<T where T: CloudKitCacheable, T: CloudKitDecodable, T: CoreDataEncodable>(cacheable: T, completionBlock: ErrorValue<T> -> () ) {
+        
+        self.fetch(cacheable.identifier, completionBlock: completionBlock)
+    }
+    
     /// Fetches and caches records from the server with the specified identifiers.
-    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(identifiers: [String], completionBlock: ErrorValue<[T]> -> () ) {
+    public func fetch<T where T: CloudKitCacheable, T: CloudKitDecodable, T: CoreDataEncodable>(identifier: T.Identifier, completionBlock: ErrorValue<T> -> () ) {
         
-        let recordIDs = identifiers.map { (identifier) -> CKRecordID in
-            
-            let recordID: CKRecordID
-            
-            if let zoneID = zoneID {
-                
-                recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
-            }
-            else { recordID = CKRecordID(recordName: identifier) }
-            
-            return recordID
-        }
+        let recordID = identifier.toRecordID()
         
-        let operation = CKFetchRecordsOperation(recordIDs: recordIDs)
+        let operation = CKFetchRecordsOperation(recordIDs: [recordID])
         
         operation.database = cloudDatabase
         
@@ -105,9 +101,7 @@ public final class CloudKitStore {
                 if (error! as NSError).domain == CKErrorDomain &&
                     (error! as NSError).code == CKErrorCode.UnknownItem.rawValue {
                     
-                        do { try store.privateQueueManagedObjectContext }
-                        
-                        catch { fatalError("Could save to CoreData. \(error)") }
+                    store.deleteCacheWithIdentifier(T.self, identifier: identifier)
                 }
                 
                 completionBlock(.Error(error!))
@@ -115,30 +109,185 @@ public final class CloudKitStore {
                 return
             }
             
-            let records = recordsByID!.map { (key, value) -> CKRecord in return value }
+            let record = recordsByID![recordID]!
             
-            guard let decodables = T.fromCloudKit(records) else {
+            guard let cacheable = T.init(recordID: record.recordID, values: record.toCloudKitValues()) else {
                 
-                completionBlock(.Error(Error.InvalidServerResponse))
+                completionBlock(.Error(Error.CouldNotDecode))
                 
                 return
             }
             
-            do { try store.privateQueue { try decodables.save(store.privateQueueManagedObjectContext) } }
+            do { try store.privateQueue { try cacheable.save(store.privateQueueManagedObjectContext) } }
                 
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
-            completionBlock(.Value(decodables))
+            completionBlock(.Value(cacheable))
         }
         
         requestQueue.addOperation(operation)
     }
     
-    public func save<T where T: CloudKitEncodable, T: CoreDataEncodable>(encodable: T, completionBlock: (ErrorType? -> ())) {
+    public func create<T where T: CloudKitDecodable, T: CoreDataEncodable>(recordType: String, identifier: CloudKitIdentifier? = nil, values: [String: CKRecordValue] = [:], completionBlock: ErrorValue<T> -> () ) {
         
-        let record = encodable.toRecord()
+        let newRecord: CKRecord
         
-        self.cloudDatabase.saveRecord(record) { [weak self] (record, error) in
+        if let identifier = identifier {
+            
+            newRecord = CKRecord(recordType: recordType, recordID: identifier.toRecordID())
+        }
+        else { newRecord = CKRecord(recordType: recordType) }
+        
+        /// set values
+        for (key, value) in values {
+            
+            newRecord[key] = value
+        }
+        
+        let operation = CKModifyRecordsOperation(recordsToSave: [newRecord], recordIDsToDelete: nil)
+        
+        operation.database = cloudDatabase
+        
+        operation.modifyRecordsCompletionBlock = { [weak self] (savedRecords, deletedRecordIDs, error) in
+            
+            guard let store = self else { return }
+            
+            guard error == nil else {
+                
+                completionBlock(.Error(error!))
+                
+                return
+            }
+            
+            let savedRecord = savedRecords!.first!
+            
+            /// could not decode (invalid input values)
+            guard let resource = T(recordID: savedRecord.recordID, values: values) else {
+                
+                completionBlock(.Error(Error.CouldNotDecode))
+                
+                return
+            }
+            
+            // cache
+            do { try store.privateQueue { try resource.save(store.privateQueueManagedObjectContext) } }
+                
+            catch { fatalError("Could not encode to CoreData. \(error)") }
+            
+            completionBlock(.Value(resource))
+        }
+
+        requestQueue.addOperation(operation)
+    }
+    
+    public func edit<T where T: CloudKitCacheable, T: CloudKitEncodable, T: CloudKitDecodable, T: CoreDataEncodable, T: CoreDataDecodable>(type: T.Type, identifier: T.Identifier, changes: [String: CKRecordValue], policy: CKRecordSavePolicy = .ChangedKeys, completionBlock: (ErrorType? -> ())) {
+        
+        let operationQueue = requestQueue
+        
+        let recordID = identifier.toRecordID()
+        
+        let database = cloudDatabase
+        
+        let fetchOperation = CKFetchRecordsOperation(recordIDs: [recordID])
+        
+        fetchOperation.database = database
+        
+        fetchOperation.desiredKeys = Array(changes.keys)
+        
+        fetchOperation.fetchRecordsCompletionBlock = { [weak self] (recordsByID, error) in
+            
+            guard let store = self else { return }
+            
+            guard error == nil else {
+                
+                /// 404 not found error
+                if (error! as NSError).domain == CKErrorDomain &&
+                    (error! as NSError).code == CKErrorCode.UnknownItem.rawValue {
+                        
+                        store.deleteCacheWithIdentifier(T.self, identifier: identifier)
+                }
+                
+                completionBlock(error!)
+                
+                return
+            }
+            
+            let record = recordsByID![recordID]!
+            
+            // set values
+            for (key, value) in changes {
+                
+                record[key] = value
+            }
+            
+            // save changes
+            let saveOperation = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
+            
+            saveOperation.savePolicy = policy
+            
+            saveOperation.modifyRecordsCompletionBlock = { (savedRecords, deletedRecords, error) in
+                
+                guard error == nil else {
+                    
+                    /// 404 not found error
+                    if (error! as NSError).domain == CKErrorDomain &&
+                        (error! as NSError).code == CKErrorCode.UnknownItem.rawValue {
+                            
+                            store.deleteCacheWithIdentifier(T.self, identifier: identifier)
+                    }
+                    
+                    completionBlock(error!)
+                    
+                    return
+                }
+                
+                // already cached, update values
+                do {
+                    if let managedObject = try T.fetchFromCache(identifier, context: store.privateQueueManagedObjectContext) {
+                        
+                        let decoded = T(managedObject: managedObject)
+                        
+                        let currentValues = decoded.toCloudKitValues()
+                        
+                        var newValues = currentValues
+                        
+                        // set values
+                        for (key, value) in changes {
+                            
+                            newValues[key] = value
+                        }
+                        
+                        guard let encodable = T(recordID: record.recordID, values: newValues) else {
+                            
+                            completionBlock(Error.CouldNotDecode)
+                            
+                            return
+                        }
+                        
+                        try store.privateQueue { try encodable.save(store.privateQueueManagedObjectContext) }
+                    }
+                }
+                    
+                catch { fatalError("Could not update CoreData cache. \(error)") }
+                
+                completionBlock(nil)
+            }
+            
+            operationQueue.addOperation(saveOperation)
+        }
+        
+        operationQueue.addOperation(fetchOperation)
+    }
+    
+    public func delete<T: CloudKitCacheable>(type: T.Type, identifier: T.Identifier, completionBlock: ErrorType? -> ()) {
+        
+        let recordID = identifier.toRecordID()
+        
+        let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: [recordID])
+        
+        operation.database = cloudDatabase
+        
+        operation.modifyRecordsCompletionBlock = { [weak self] (savedRecords, deletedRecordIDs, error) in
             
             guard let store = self else { return }
             
@@ -149,41 +298,8 @@ public final class CloudKitStore {
                 return
             }
             
-            do { try store.privateQueue { try encodable.save(store.privateQueueManagedObjectContext) } }
-                
-            catch { fatalError("Could not encode to CoreData. \(error)") }
-            
-            completionBlock(nil)
-        }
-    }
-    
-    //public func edit(identifier: String, changes: ValuesObject, completionBlock: (ErrorType? -> ())) {
-    
-    public func delete(identifier: String, completionBlock: ErrorType? -> ()) {
-        
-        let recordID: CKRecordID
-        
-        if let zoneID = zoneID {
-            
-            recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
-        }
-        else { recordID = CKRecordID(recordName: identifier) }
-        
-        let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: [recordID])
-        
-        operation.database = cloudDatabase
-        
-        operation.modifyRecordsCompletionBlock = { (savedRecords, deletedRecords, error) in
-            
-            guard error == nil else {
-                
-                completionBlock(error)
-                
-                return
-            }
-            
             // delete from cache
-            
+            store.deleteCacheWithIdentifier(type, identifier: identifier)
         }
         
         requestQueue.addOperation(operation)
@@ -194,6 +310,25 @@ public final class CloudKitStore {
     private func privateQueue(block: () throws -> ()) throws {
         
         try self.privateQueueManagedObjectContext.performErrorBlockAndWait(block)
+    }
+    
+    private func deleteCacheWithIdentifier<T: CloudKitCacheable>(type: T.Type, identifier: T.Identifier) {
+        
+        do {
+            
+            try self.privateQueue {
+                
+                if let managedObject = try T.fetchFromCache(identifier, context: self.privateQueueManagedObjectContext) {
+                
+                self.privateQueueManagedObjectContext.deleteObject(managedObject)
+                
+                try self.privateQueueManagedObjectContext.save()
+                    
+                }
+            }
+        }
+            
+        catch { fatalError("Could not delete from CoreData. \(error)") }
     }
 }
 
