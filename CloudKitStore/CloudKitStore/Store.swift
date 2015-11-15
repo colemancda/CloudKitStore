@@ -19,17 +19,11 @@ public final class CloudKitStore {
     
     // MARK: Cache
     
-    /** The managed object context used for caching. */
+    /// The managed object context used for caching.
     public let managedObjectContext: NSManagedObjectContext
     
-    /** A convenience variable for the managed object model. */
-    public let managedObjectModel: NSManagedObjectModel
-    
-    /** The name of the string attribute that holds that resource identifier. */
-    public let resourceIDAttributeName: String
-    
-    /// The name of a for the date attribute that can be optionally added at runtime for cache validation.
-    public let dateCachedAttributeName: String?
+    /// Whether to treat ```CoreData``` errors as fatal errors, or to throw them.
+    public var throwCoreDataError = false
     
     // MARK: CloudKit
     
@@ -60,38 +54,20 @@ public final class CloudKitStore {
         NSNotificationCenter.defaultCenter().removeObserver(self, name: NSManagedObjectContextDidSaveNotification, object: self.privateQueueManagedObjectContext)
     }
     
-    /// Creates the Store using the specified options.
+    /// Creates the store using the specified options.
     ///
-    /// - Note: The created ```NSManagedObjectContext``` will need a persistent store added
-    /// to its persistent store coordinator.
-    public init(managedObjectModel: NSManagedObjectModel, concurrencyType: NSManagedObjectContextConcurrencyType = .MainQueueConcurrencyType,
-        resourceIDAttributeName: String = "id",
-        dateCachedAttributeName: String? = "dateCached") {
-            
-            self.resourceIDAttributeName = resourceIDAttributeName
-            self.dateCachedAttributeName = dateCachedAttributeName
-            self.managedObjectModel = managedObjectModel.copy() as! NSManagedObjectModel
-            
-            // setup Core Data stack
-            
-            // edit model
-            
-            if self.dateCachedAttributeName != nil {
-                
-                self.managedObjectModel.addDateCachedAttribute(dateCachedAttributeName!)
-            }
-            
-            self.managedObjectModel.markAllPropertiesAsOptional()
-            self.managedObjectModel.addResourceIDAttribute(resourceIDAttributeName)
-            
+    /// - Precondition: The provided ```NSManagedObjectContext``` should have its persistent store coordinator configured.
+    public init(context: NSManagedObjectContext) {
+        
+        guard let persistentStoreCoordinator = context.persistentStoreCoordinator
+            else { fatalError("Provided managed object context should have its persistent store coordinator setup") }
+        
             // setup managed object contexts
-            
-            self.managedObjectContext = NSManagedObjectContext(concurrencyType: concurrencyType)
+            self.managedObjectContext = context
             self.managedObjectContext.undoManager = nil
-            self.managedObjectContext.persistentStoreCoordinator = NSPersistentStoreCoordinator(managedObjectModel: self.managedObjectModel)
             
             self.privateQueueManagedObjectContext.undoManager = nil
-            self.privateQueueManagedObjectContext.persistentStoreCoordinator = self.managedObjectContext.persistentStoreCoordinator
+            self.privateQueueManagedObjectContext.persistentStoreCoordinator = persistentStoreCoordinator
             
             // set private context name
             self.privateQueueManagedObjectContext.name = "CloudKitStore Private Managed Object Context"
@@ -102,50 +78,60 @@ public final class CloudKitStore {
     
     // MARK: - Methods
     
-    /// Fetches the a record from the server with the specified identifier.
-    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(identifier: String, completionBlock: (ErrorValue<T> -> ())) {
+    /// Fetches and caches records from the server with the specified identifiers.
+    public func fetch<T where T: CloudKitDecodable, T: CoreDataEncodable>(identifiers: [String], completionBlock: ErrorValue<[T]> -> () ) {
         
-        let recordID: CKRecordID
-        
-        if let zoneID = zoneID {
+        let recordIDs = identifiers.map { (identifier) -> CKRecordID in
             
-            recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
+            let recordID: CKRecordID
+            
+            if let zoneID = zoneID {
+                
+                recordID = CKRecordID(recordName: identifier, zoneID: zoneID)
+            }
+            else { recordID = CKRecordID(recordName: identifier) }
+            
+            return recordID
         }
-        else { recordID = CKRecordID(recordName: identifier) }
         
-        let operation = CKFetchRecordsOperation(recordIDs: [recordID])
+        let operation = CKFetchRecordsOperation(recordIDs: recordIDs)
         
         operation.database = cloudDatabase
         
-        operation.fetchRecordsCompletionBlock = { (records, error) in
+        operation.fetchRecordsCompletionBlock = { [weak self] (recordsByID, error) in
+            
+            guard let store = self else { return }
             
             guard error == nil else {
+                
+                /// 404 not found error
+                if (error! as NSError).domain == CKErrorDomain &&
+                    (error! as NSError).code == CKErrorCode.UnknownItem.rawValue {
+                    
+                        do { try store.privateQueueManagedObjectContext }
+                        
+                        catch { fatalError("Could save to CoreData. \(error)") }
+                }
                 
                 completionBlock(.Error(error!))
                 
                 return
             }
             
-            let record = records![recordID]
+            let records = recordsByID!.map { (key, value) -> CKRecord in return value }
             
-            guard let decodable = T(record: record!) else {
+            guard let decodables = T.fromCloudKit(records) else {
                 
-                completionBlock(.Error(Error.InvalidResponse))
+                completionBlock(.Error(Error.InvalidServerResponse))
                 
                 return
             }
             
-            do {
-                
-                try self.privateQueueManagedObjectContext.performErrorBlockAndWait {
-                    
-                    try decodable.save(self.privateQueueManagedObjectContext)
-                }
-            }
+            do { try store.privateQueue { try decodables.save(store.privateQueueManagedObjectContext) } }
                 
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
-            completionBlock(.Value(decodable))
+            completionBlock(.Value(decodables))
         }
         
         requestQueue.addOperation(operation)
@@ -155,7 +141,9 @@ public final class CloudKitStore {
         
         let record = encodable.toRecord()
         
-        self.cloudDatabase.saveRecord(record) { (record, error) in
+        self.cloudDatabase.saveRecord(record) { [weak self] (record, error) in
+            
+            guard let store = self else { return }
             
             guard error == nil else {
                 
@@ -164,13 +152,7 @@ public final class CloudKitStore {
                 return
             }
             
-            do {
-                
-                try self.privateQueueManagedObjectContext.performErrorBlockAndWait {
-                    
-                    try encodable.save(self.privateQueueManagedObjectContext)
-                }
-            }
+            do { try store.privateQueue { try encodable.save(store.privateQueueManagedObjectContext) } }
                 
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
@@ -178,12 +160,12 @@ public final class CloudKitStore {
         }
     }
     
-    public func edit(identifier: String, changes: ValuesObject, completionBlock: (ErrorType? -> ())) {
+    //public func edit(identifier: String, changes: ValuesObject, completionBlock: (ErrorType? -> ())) {
         
         
-    }
     
-    public func delete(identifier: String, completionBlock: (ErrorType? -> ())) {
+    
+    public func delete(identifier: String, completionBlock: ErrorType? -> ()) {
         
         let recordID: CKRecordID
         
@@ -193,9 +175,44 @@ public final class CloudKitStore {
         }
         else { recordID = CKRecordID(recordName: identifier) }
         
-        self.cloudDatabase.deleteRecordWithID(recordID) { (recordID, error) in
+        let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: [recordID])
+        
+        operation.database = cloudDatabase
+        
+        operation.modifyRecordsCompletionBlock = { (savedRecords, deletedRecords, error) in
             
+            guard error == nil else {
+                
+                completionBlock(error)
+                
+                return
+            }
             
+            // delete from cache
+            
+        }
+        
+        requestQueue.addOperation(operation)
+    }
+    
+    // MARK: - Private Methods
+    
+    private func privateQueue(block: () throws -> ()) throws {
+        
+        try self.privateQueueManagedObjectContext.performErrorBlockAndWait(block)
+    }
+    
+    private func CoreDataQueue(block: () throws -> ()) throws {
+        
+        if throwCoreDataError {
+            
+            try block()
+        }
+        else {
+            
+            do { try block() }
+            
+            catch { fatalError("Core Data error: \(error)") }
         }
     }
 }

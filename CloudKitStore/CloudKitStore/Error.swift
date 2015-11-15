@@ -8,10 +8,10 @@
 
 public extension CloudKitStore {
     
-    /// Errors returned with **NetworkObjects**' ```Client```.
+    /// Errors returned with ```CloudKitStore```.
     public enum Error: ErrorType {
         
         /// The server returned an invalid response.
-        case InvalidResponse
+        case InvalidServerResponse
     }
 }
