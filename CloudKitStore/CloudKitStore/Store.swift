@@ -22,9 +22,6 @@ public final class CloudKitStore {
     /// The managed object context used for caching.
     public let managedObjectContext: NSManagedObjectContext
     
-    /// Whether to treat ```CoreData``` errors as fatal errors, or to throw them.
-    public var throwCoreDataError = false
-    
     // MARK: CloudKit
     
     /// The CloudKit database this class with connect to.
@@ -161,9 +158,6 @@ public final class CloudKitStore {
     }
     
     //public func edit(identifier: String, changes: ValuesObject, completionBlock: (ErrorType? -> ())) {
-        
-        
-    
     
     public func delete(identifier: String, completionBlock: ErrorType? -> ()) {
         
@@ -200,20 +194,6 @@ public final class CloudKitStore {
     private func privateQueue(block: () throws -> ()) throws {
         
         try self.privateQueueManagedObjectContext.performErrorBlockAndWait(block)
-    }
-    
-    private func CoreDataQueue(block: () throws -> ()) throws {
-        
-        if throwCoreDataError {
-            
-            try block()
-        }
-        else {
-            
-            do { try block() }
-            
-            catch { fatalError("Core Data error: \(error)") }
-        }
     }
 }
 
