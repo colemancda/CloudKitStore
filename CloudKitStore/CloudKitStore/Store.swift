@@ -12,7 +12,7 @@ import CloudKit
 import CoreDataStruct
 import CloudKitStruct
 
-/// Fetches CloudKit data and caches the response in CoreData models.
+/// Fetches ```CloudKit``` data and caches the response in ```CoreData```.
 public final class CloudKitStore {
     
     // MARK: - Properties
