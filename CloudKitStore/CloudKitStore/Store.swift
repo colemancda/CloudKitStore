@@ -27,6 +27,9 @@ public final class CloudKitStore {
     /// The CloudKit database this class with connect to.
     public var cloudDatabase: CKDatabase = CKContainer.defaultContainer().publicCloudDatabase
     
+    /// The the ID of the zone you will fetch from. 
+    public var zoneID: CKRecordZoneID?
+    
     // MARK: State
     
     public var busy: Bool { return requestQueue.operationCount > 0 }

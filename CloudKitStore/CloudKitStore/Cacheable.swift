@@ -15,10 +15,6 @@ import CloudKitStruct
 /// Type can be cached with ```CloudKitStore```.
 public protocol CloudKitCacheable {
     
-    typealias Identifier: CloudKitIdentifier
-    
-    var identifier: Identifier { get }
-    
     /// Fetches the cacheable type (if it exists) from the managed object context.
     ///
     /// - Note: No need to wrap calls to the context with ```-performWithBlock:```. 
