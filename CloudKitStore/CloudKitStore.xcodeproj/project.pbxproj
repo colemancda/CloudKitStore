@@ -19,6 +19,7 @@
 		6EFAF7E41BF9507300779AFF /* Cacheable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EFAF7DB1BF91C0D00779AFF /* Cacheable.swift */; };
 		6EFAF7E51BF9507300779AFF /* CoreDataExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF660C61BF6FC9200BACE52 /* CoreDataExtensions.swift */; };
 		6EFAF7E81BF9507300779AFF /* CloudKitStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF660AB1BF6F64F00BACE52 /* CloudKitStore.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		6EFAF7F51BF9884300779AFF /* SearchResultsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EFAF7F41BF9884300779AFF /* SearchResultsController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,7 @@
 		6EF660D91BF70DCD00BACE52 /* Error.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Error.swift; sourceTree = "<group>"; };
 		6EFAF7DB1BF91C0D00779AFF /* Cacheable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Cacheable.swift; sourceTree = "<group>"; };
 		6EFAF7ED1BF9507300779AFF /* CloudKitStore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CloudKitStore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		6EFAF7F41BF9884300779AFF /* SearchResultsController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SearchResultsController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +100,7 @@
 				6EFAF7DB1BF91C0D00779AFF /* Cacheable.swift */,
 				6EF660D91BF70DCD00BACE52 /* Error.swift */,
 				6EF660C61BF6FC9200BACE52 /* CoreDataExtensions.swift */,
+				6EFAF7EF1BF986CB00779AFF /* UIKit */,
 				6EF660AD1BF6F64F00BACE52 /* Info.plist */,
 			);
 			path = CloudKitStore;
@@ -110,6 +113,14 @@
 				6EF660B91BF6F64F00BACE52 /* Info.plist */,
 			);
 			path = CloudKitStoreTests;
+			sourceTree = "<group>";
+		};
+		6EFAF7EF1BF986CB00779AFF /* UIKit */ = {
+			isa = PBXGroup;
+			children = (
+				6EFAF7F41BF9884300779AFF /* SearchResultsController.swift */,
+			);
+			name = UIKit;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -276,6 +287,7 @@
 				6EFAF7E21BF9507300779AFF /* Error.swift in Sources */,
 				6EFAF7E31BF9507300779AFF /* Store.swift in Sources */,
 				6EFAF7E41BF9507300779AFF /* Cacheable.swift in Sources */,
+				6EFAF7F51BF9884300779AFF /* SearchResultsController.swift in Sources */,
 				6EFAF7E51BF9507300779AFF /* CoreDataExtensions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
