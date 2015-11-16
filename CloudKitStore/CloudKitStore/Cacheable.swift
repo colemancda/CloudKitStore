@@ -19,5 +19,5 @@ public protocol CloudKitCacheable {
     ///
     /// - Note: No need to wrap calls to the context with ```-performWithBlock:```. 
     /// This method is assumed to be called from the context's queue.
-    static func fetchFromCache(identifier: Identifier, context: NSManagedObjectContext) throws -> NSManagedObject?
+    static func fetchFromCache(recordName: String, context: NSManagedObjectContext) throws -> NSManagedObject?
 }
