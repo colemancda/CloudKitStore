@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "6EFAF7E01BF9507300779AFF"
-               BuildableName = "CloudKitStore iOS.framework"
+               BuildableName = "CloudKitStore.framework"
                BlueprintName = "CloudKitStore iOS"
                ReferencedContainer = "container:CloudKitStore.xcodeproj">
             </BuildableReference>
@@ -46,7 +46,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "6EFAF7E01BF9507300779AFF"
-            BuildableName = "CloudKitStore iOS.framework"
+            BuildableName = "CloudKitStore.framework"
             BlueprintName = "CloudKitStore iOS"
             ReferencedContainer = "container:CloudKitStore.xcodeproj">
          </BuildableReference>
@@ -64,7 +64,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "6EFAF7E01BF9507300779AFF"
-            BuildableName = "CloudKitStore iOS.framework"
+            BuildableName = "CloudKitStore.framework"
             BlueprintName = "CloudKitStore iOS"
             ReferencedContainer = "container:CloudKitStore.xcodeproj">
          </BuildableReference>
