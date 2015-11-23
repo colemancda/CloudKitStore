@@ -17,7 +17,7 @@ public final class CloudKitStore {
     
     // MARK: - Properties
     
-    // MARK: Cache
+    // MARK: CoreData
     
     /// The managed object context used for caching.
     public let managedObjectContext: NSManagedObjectContext
@@ -30,6 +30,11 @@ public final class CloudKitStore {
     // MARK: State
     
     public var busy: Bool { return requestQueue.operationCount > 0 }
+    
+    // MARK: Queue
+    
+    ///  The queue the completion blocks will be called on.
+    public var queue: NSOperationQueue = NSOperationQueue.mainQueue()
     
     // MARK: - Private Properties
     
@@ -97,7 +102,7 @@ public final class CloudKitStore {
                     store.deleteCache(T.self, recordID: recordID)
                 }
                 
-                completionBlock(.Error(error!))
+                store.responseQueue { completionBlock(.Error(error!)) }
                 return
             }
             
@@ -105,7 +110,7 @@ public final class CloudKitStore {
             
             guard let cacheable = T(record: record) else {
                 
-                completionBlock(.Error(Error.CouldNotDecode))
+                store.responseQueue { completionBlock(.Error(Error.CouldNotDecode)) }
                 return
             }
             
@@ -113,7 +118,7 @@ public final class CloudKitStore {
                 
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
-            completionBlock(.Value(cacheable))
+            store.responseQueue { completionBlock(.Value(cacheable)) }
         }
         
         requestQueue.addOperation(operation)
@@ -148,7 +153,7 @@ public final class CloudKitStore {
             
             guard error == nil else {
                 
-                completionBlock(.Error(error!))
+                store.responseQueue { completionBlock(.Error(error!)) }
                 return
             }
             
@@ -157,7 +162,7 @@ public final class CloudKitStore {
             /// could not decode (invalid input values)
             guard let resource = T(record: savedRecord) else {
                 
-                completionBlock(.Error(Error.CouldNotDecode))
+                store.responseQueue { completionBlock(.Error(Error.CouldNotDecode)) }
                 return
             }
             
@@ -166,7 +171,7 @@ public final class CloudKitStore {
                 
             catch { fatalError("Could not encode to CoreData. \(error)") }
             
-            completionBlock(.Value(resource))
+            store.responseQueue { completionBlock(.Value(resource)) }
         }
 
         requestQueue.addOperation(operation)
@@ -197,7 +202,7 @@ public final class CloudKitStore {
                         store.deleteCache(T.self, recordID: recordID)
                 }
                 
-                completionBlock(error!)
+                store.responseQueue { completionBlock(error!) }
                 return
             }
             
@@ -225,7 +230,7 @@ public final class CloudKitStore {
                             store.deleteCache(T.self, recordID: recordID)
                     }
                     
-                    completionBlock(error!)
+                    store.responseQueue { completionBlock(error!) }
                     
                     return
                 }
@@ -246,7 +251,7 @@ public final class CloudKitStore {
                         
                         guard let resource = T(record: cachedCloudKitRecord) else {
                             
-                            completionBlock(Error.CouldNotDecode)
+                            store.responseQueue { completionBlock(Error.CouldNotDecode) }
                             return
                         }
                         
@@ -256,7 +261,7 @@ public final class CloudKitStore {
                     
                 catch { fatalError("Could not update CoreData cache. \(error)") }
                 
-                completionBlock(nil)
+                store.responseQueue { completionBlock(nil) }
             }
             
             operationQueue.addOperation(saveOperation)
@@ -284,7 +289,7 @@ public final class CloudKitStore {
                         store.deleteCache(T.self, recordID: recordID)
                 }
                 
-                completionBlock(error)
+                store.responseQueue { completionBlock(error) }
                 return
             }
             
@@ -296,7 +301,7 @@ public final class CloudKitStore {
     }
     
     public func search<T where T: CloudKitDecodable, T: CoreDataEncodable>
-        (type: T.Type, queryType: QueryType, resultsLimit: Int? = nil, zoneID: RecordZoneID? = nil, completionBlock: ErrorValue<([T], CKQueryCursor?)> -> () ) {
+        (queryType: QueryType, resultsLimit: Int? = nil, zoneID: RecordZoneID? = nil, completionBlock: ErrorValue<([T], CKQueryCursor?)> -> () ) {
         
         let operation: CKQueryOperation
         
@@ -326,7 +331,7 @@ public final class CloudKitStore {
                 
                 decodeError = true
                 
-                completionBlock(.Error(Error.CouldNotDecode))
+                store.responseQueue { completionBlock(.Error(Error.CouldNotDecode)) }
                 return
             }
             
@@ -340,17 +345,17 @@ public final class CloudKitStore {
         
         operation.queryCompletionBlock = { [weak self] (cursor, error) in
             
-            guard let _ = self where decodeError == false else { return }
+            guard let store = self where decodeError == false else { return }
             
             guard error == nil else {
                 
-                completionBlock(.Error(error!))
+                store.responseQueue { completionBlock(.Error(error!)) }
                 return
             }
             
             let value = (results, cursor)
             
-            completionBlock(.Value(value))
+            store.responseQueue { completionBlock(.Value(value)) }
         }
         
         requestQueue.addOperation(operation)
@@ -361,6 +366,11 @@ public final class CloudKitStore {
     private func privateQueue(block: () throws -> ()) throws {
         
         try self.privateQueueManagedObjectContext.performErrorBlockAndWait(block)
+    }
+    
+    private func responseQueue(block: () -> ()) {
+        
+        self.queue.addOperationWithBlock(block)
     }
     
     private func deleteCache<T: CloudKitCacheable>(type: T.Type, recordID: RecordID) {

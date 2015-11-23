@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6E857A551C02868300E5A333 /* QueryResultsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E857A541C02868300E5A333 /* QueryResultsController.swift */; };
+		6E857A561C02868300E5A333 /* QueryResultsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E857A541C02868300E5A333 /* QueryResultsController.swift */; };
 		6EF660AC1BF6F64F00BACE52 /* CloudKitStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EF660AB1BF6F64F00BACE52 /* CloudKitStore.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		6EF660B31BF6F64F00BACE52 /* CloudKitStore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6EF660A81BF6F64F00BACE52 /* CloudKitStore.framework */; };
 		6EF660B81BF6F64F00BACE52 /* CloudKitStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF660B71BF6F64F00BACE52 /* CloudKitStoreTests.swift */; };
@@ -32,6 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		6E857A541C02868300E5A333 /* QueryResultsController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = QueryResultsController.swift; sourceTree = "<group>"; };
 		6EF660A81BF6F64F00BACE52 /* CloudKitStore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CloudKitStore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		6EF660AB1BF6F64F00BACE52 /* CloudKitStore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CloudKitStore.h; sourceTree = "<group>"; };
 		6EF660AD1BF6F64F00BACE52 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -98,6 +101,7 @@
 				6EFAF7DB1BF91C0D00779AFF /* Cacheable.swift */,
 				6EF660D91BF70DCD00BACE52 /* Error.swift */,
 				6EF660C61BF6FC9200BACE52 /* CoreDataExtensions.swift */,
+				6E857A541C02868300E5A333 /* QueryResultsController.swift */,
 				6EF660AD1BF6F64F00BACE52 /* Info.plist */,
 			);
 			path = CloudKitStore;
@@ -254,6 +258,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E857A551C02868300E5A333 /* QueryResultsController.swift in Sources */,
 				6EF660DA1BF70DCD00BACE52 /* Error.swift in Sources */,
 				6EF660C31BF6F66B00BACE52 /* Store.swift in Sources */,
 				6EFAF7DC1BF91C0D00779AFF /* Cacheable.swift in Sources */,
@@ -273,6 +278,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E857A561C02868300E5A333 /* QueryResultsController.swift in Sources */,
 				6EFAF7E21BF9507300779AFF /* Error.swift in Sources */,
 				6EFAF7E31BF9507300779AFF /* Store.swift in Sources */,
 				6EFAF7E41BF9507300779AFF /* Cacheable.swift in Sources */,
