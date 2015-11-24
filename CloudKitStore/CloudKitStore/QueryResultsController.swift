@@ -72,14 +72,6 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
             // set initial values
             self.searchResults = self.fetchedResultsController.fetchedObjects as! [NSManagedObject]
             
-            // send events
-            self.event.willChangeContent()
-            
-            for (index, _) in self.searchResults.enumerate() {
-                
-                self.event.didInsert(index: index)
-            }
-            
             self.state = .Loaded
             
             fallthrough
@@ -150,19 +142,21 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
                     
                     guard let controller = self else { return }
                     
-                    controller.state = .Loaded
-                    
                     switch response {
                         
                     case let .Error(error):
                         
-                        controller.event.didLoadCursor(error: error)
+                        controller.event.didLoadCursor(.Error(error))
                         
-                    case let .Value(_, cursor):
+                        controller.state = .Loaded
+                        
+                    case let .Value(results, cursor):
                         
                         controller.queryCursor = cursor
                         
-                        controller.event.didLoadCursor(error: nil)
+                        controller.event.didLoadCursor()
+                        
+                        controller.state = .Loaded
                     }
                 }
                 
