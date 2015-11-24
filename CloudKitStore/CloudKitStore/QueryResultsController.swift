@@ -30,9 +30,9 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
     /// The cached search results.
     public private(set) var searchResults = [NSManagedObject]()
     
-    public var event = QueryResultsControllerEvent()
-    
     public private(set) var state = QueryResultsControllerState()
+    
+    public var event = QueryResultsControllerEvent<T>()
     
     // MARK: - Private Properties
     
@@ -64,36 +64,60 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
             
         case .Initial:
             
-            defer { self.state = .Loaded }
-            
             // fetch from cache
             do { try self.fetchedResultsController.performFetch() }
                 
             catch { fatalError("Could not fetch from managed object context. \(error)") }
             
-        case .Loaded: break
-        }
-        
-        // reset cursor
-        self.queryCursor = nil
-        
-        // fetch from server
-        self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
+            // set initial values
+            self.searchResults = self.fetchedResultsController.fetchedObjects as! [NSManagedObject]
             
-            guard let controller = self else { return }
+            // send events
+            self.event.willChangeContent()
             
-            switch response {
+            for (index, _) in self.searchResults.enumerate() {
                 
-            case let .Error(error):
-                
-                controller.event.didRefresh(error: error)
-                
-            case let .Value(_, cursor):
-                
-                controller.queryCursor = cursor
-                
-                controller.event.didRefresh(error: nil)
+                self.event.didInsert(index: index)
             }
+            
+            self.state = .Loaded
+            
+            fallthrough
+            
+        case .Loaded:
+            
+            // reset cursor
+            self.queryCursor = nil
+            
+            self.state = .Refreshing
+            
+            // fetch from server
+            self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
+                
+                guard let controller = self else { return }
+                
+                switch response {
+                    
+                case let .Error(error):
+                    
+                    controller.event.didRefresh(.Error(error))
+                    
+                    controller.state = .Loaded
+                    
+                case let .Value(results, cursor):
+                    
+                    // set cursor
+                    controller.queryCursor = cursor
+                    
+                    controller.event.didRefresh(.Value(results))
+                    
+                    controller.state = .Loaded
+                }
+            }
+            
+        case .Refreshing: return // ignore, already refreshing
+            
+        case .LoadingCursor: return // ignore, loading more
         }
     }
     
@@ -115,23 +139,34 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
         // load more (for last row)
         if let _ = self.queryCursor where row == self.searchResults.count {
             
-            // make request to load more
-            self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
+            switch self.state {
+             
+            case .Loaded:
                 
-                guard let controller = self else { return }
+                self.state = .LoadingCursor
                 
-                switch response {
+                // make request to load more
+                self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
                     
-                case let .Error(error):
+                    guard let controller = self else { return }
                     
-                    controller.event.didLoadCursor(error: error)
+                    controller.state = .Loaded
                     
-                case let .Value(_, cursor):
-                    
-                    controller.queryCursor = cursor
-                    
-                    controller.event.didLoadCursor(error: nil)
+                    switch response {
+                        
+                    case let .Error(error):
+                        
+                        controller.event.didLoadCursor(error: error)
+                        
+                    case let .Value(_, cursor):
+                        
+                        controller.queryCursor = cursor
+                        
+                        controller.event.didLoadCursor(error: nil)
+                    }
                 }
+                
+            default: break
             }
             
             return .Loading
@@ -155,20 +190,20 @@ public enum QueryResultsControllerValue<T> {
     case Loading
 }
 
-public struct QueryResultsControllerEvent {
+public struct QueryResultsControllerEvent<T> {
     
     // Request Callback
     
     /// Informs the delegate that a search request has completed with the specified error (if any).
-    public var didRefresh: ((error: ErrorType?) -> ()) = { (error) in }
+    public var didRefresh: (ErrorValue<[T]>) -> () = { (error) in }
     
-    public var didLoadCursor: ((error: ErrorType?) -> ()) = { (error) in }
+    public var didLoadCursor: (ErrorValue<[T]>) -> () = { (error) in }
     
     // Change Notification Callbacks
     
-    public var willChangeContent: (() -> ()) = { }
+    public var willChangeContent: () -> () = { }
     
-    public var didChangeContent: (() -> ()) = { }
+    public var didChangeContent: () -> () = { }
     
     public var didInsert: ((index: Int) -> ()) = { (index) in }
     
@@ -186,6 +221,10 @@ public enum QueryResultsControllerState {
     case Initial
     
     case Loaded
+    
+    case Refreshing
+    
+    case LoadingCursor
     
     private init() { self = .Initial }
 }
@@ -241,6 +280,17 @@ extension QueryResultsController: InternalFetchedResultsControllerDelegate {
         atIndexPath indexPath: NSIndexPath?,
         forChangeType type: NSFetchedResultsChangeType,
         newIndexPath: NSIndexPath?) {
+            
+            switch self.state {
+                
+            case .Initial: break // ignore, events will be called manually
+                
+            case .Loaded: break // no ongoing requests, should update from cache
+                
+            case .Refreshing: break // provide update animations
+                
+            case .LoadingCursor: return // ignore, will load more from server
+            }
             
             switch type {
                 
