@@ -13,7 +13,7 @@ import CoreData
 import CoreDataStruct
 
 /// Controller for CloudKit queries.
-public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreDataEncodable> {
+public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreDataEncodable, T: CoreDataDecodable> {
     
     // MARK: - Properties
     
@@ -71,7 +71,51 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
                 
             catch { fatalError("Could not fetch from managed object context. \(error)") }
             
-            // fetch from server
+        case .Loaded: break
+        }
+        
+        // reset cursor
+        self.queryCursor = nil
+        
+        // fetch from server
+        self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
+            
+            guard let controller = self else { return }
+            
+            switch response {
+                
+            case let .Error(error):
+                
+                controller.event.didRefresh(error: error)
+                
+            case let .Value(_, cursor):
+                
+                controller.queryCursor = cursor
+                
+                controller.event.didRefresh(error: nil)
+            }
+        }
+    }
+    
+    /// - Returns: The number of rows to show in the UI, including extra rows for placeholder cells.
+    public func numberOfRows() -> Int {
+        
+        var count = self.searchResults.count
+        
+        if let _ = self.queryCursor { count++ }
+        
+        return count
+    }
+    
+    /// - Returns: The cached value to show for a row, or a placeholder value.
+    ///
+    /// - Note: Makes requests in the background if the returned value is a placeholder.
+    public func valueAtRow(row: Int) -> QueryResultsControllerValue<T> {
+        
+        // load more
+        if let _ = self.queryCursor {
+            
+            // make request to load more
             self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
                 
                 guard let controller = self else { return }
@@ -80,32 +124,45 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
                     
                 case let .Error(error):
                     
-                    controller.event.didExecuteQuery(error: error)
+                    controller.event.didLoadCursor(error: error)
                     
-                case let .Value(results, cursor):
+                case let .Value(_, cursor):
                     
                     controller.queryCursor = cursor
                     
-                    controller.event.didExecuteQuery(error: nil)
+                    controller.event.didLoadCursor(error: nil)
                 }
             }
             
-        case .Loaded: break
-            
-            
-            
+            return .Loading
         }
+        
+        // return value
+        let managedObject = self.searchResults[row]
+        
+        let decodable = T(managedObject: managedObject)
+        
+        return .Value(decodable)
     }
 }
 
 // MARK: - Supporting Types
+
+public enum QueryResultsControllerValue<T> {
+    
+    case Value(T)
+    
+    case Loading
+}
 
 public struct QueryResultsControllerEvent {
     
     // Request Callback
     
     /// Informs the delegate that a search request has completed with the specified error (if any).
-    public var didExecuteQuery: ((error: ErrorType?) -> ()) = { (error) in }
+    public var didRefresh: ((error: ErrorType?) -> ()) = { (error) in }
+    
+    public var didLoadCursor: ((error: ErrorType?) -> ()) = { (error) in }
     
     // Change Notification Callbacks
     
