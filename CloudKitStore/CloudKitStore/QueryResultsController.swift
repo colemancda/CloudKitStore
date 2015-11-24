@@ -30,7 +30,7 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
     /// The cached search results.
     public private(set) var searchResults = [NSManagedObject]()
     
-    public private(set) var event = QueryResultsControllerEvent()
+    public var event = QueryResultsControllerEvent()
     
     public private(set) var state = QueryResultsControllerState()
     
