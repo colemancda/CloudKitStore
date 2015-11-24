@@ -112,8 +112,8 @@ public final class QueryResultsController<T where T: CloudKitDecodable, T: CoreD
     /// - Note: Makes requests in the background if the returned value is a placeholder.
     public func valueAtRow(row: Int) -> QueryResultsControllerValue<T> {
         
-        // load more
-        if let _ = self.queryCursor {
+        // load more (for last row)
+        if let _ = self.queryCursor where row == self.searchResults.count {
             
             // make request to load more
             self.store.search(.Query(query), resultsLimit: queryResultsLimit, zoneID: zoneID) { [weak self] (response: ErrorValue<([T], CKQueryCursor?)>) in
